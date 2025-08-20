@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rath Yatra Lucky Draw | Shrachi Agrimech</title>
+  <meta name="description" content="Rath Yatra Lucky Draw — Shrachi Agrimech" />
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <!-- Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <style>
+    :root { --brand:#1d7a46; --accent:#0ea5e9; }
+    html, body { height:100%; }
+    body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    .glass { background: rgba(255,255,255,0.7); backdrop-filter: blur(14px); }
+    .drawer { transform: translateX(-100%); }
+    .drawer.open { transform: translateX(0); }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+  <!-- Header -->
+  <header class="w-full glass shadow flex items-center justify-center gap-4 py-4 px-6 sticky top-0 z-30"> 
+    <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-800">
+      Rath Yatra Lucky Draw
+    </h1>
+  </header>
+
+  <!-- Drawer Toggle -->
+  <button id="toggleDrawer" class="fixed top-24 left-4 z-40 glass p-2 rounded-xl shadow hover:shadow-md transition">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
+
+  <!-- Side Drawer -->
+  <aside id="drawer" class="drawer fixed top-0 left-0 h-full w-80 glass shadow-2xl p-4 transition-transform duration-300 z-50">
+    <h2 class="text-xl font-semibold mb-2 text-slate-800">Add Participants</h2>
+    <p class="text-xs text-slate-600 mb-3">Paste names below — one per line (or comma‑separated).</p>
+    <textarea id="namesInput" rows="10" class="w-full p-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="e.g.\nAditi\nRahul\nVikram\n..."></textarea>
+    <div class="flex gap-2 mt-3">
+      <button id="addNamesBtn" class="flex-1 py-2 rounded-xl text-white font-semibold shadow bg-gradient-to-r from-emerald-500 to-sky-500 hover:opacity-90">Add Names</button>
+      <button id="clearAllBtn" class="px-3 py-2 rounded-xl border">Clear</button>
+    </div>
+
+    <h3 class="mt-5 font-semibold text-slate-800">Participants (<span id="count">0</span>)</h3>
+    <ul id="participantsList" class="mt-2 space-y-1 max-h-64 overflow-y-auto pr-1 text-sm"></ul>
+  </aside>
+
+  <!-- Main -->
+  <main class="max-w-5xl mx-auto px-6">
+    <section class="flex flex-col items-center mt-16 relative">
+      <!-- Display Card -->
+      <div class="glass border border-white/60 shadow-2xl rounded-3xl w-full max-w-lg h-64 flex items-center justify-center">
+        <div id="display" class="text-3xl md:text-4xl font-extrabold tracking-wide text-slate-800 select-none">Click Draw to start!</div>
+      </div>
+
+      <!-- Controls -->
+      <div class="mt-8 flex flex-wrap gap-4 items-center justify-center">
+        <button id="drawBtn" class="px-10 py-4 text-lg font-bold rounded-2xl shadow-lg text-white bg-gradient-to-r from-emerald-500 to-sky-500 hover:opacity-90">Draw Winner</button>
+        <button id="stopBtn" class="px-5 py-4 text-sm font-semibold rounded-2xl border hidden">Stop</button>
+        <button id="resetBtn" class="px-5 py-4 text-sm font-semibold rounded-2xl border">Reset</button>
+      </div>
+
+      <!-- Winners -->
+      <div class="mt-10 w-full max-w-3xl glass rounded-3xl p-5 border">
+        <h3 class="text-lg font-bold text-slate-800 mb-3">Past Winners</h3>
+        <ol id="winnersList" class="grid sm:grid-cols-2 gap-2 text-sm list-decimal list-inside"></ol>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // State
+    let participants = [];
+    let intervalId = null;
+    let rolling = false;
+
+    // DOM
+    const drawer = document.getElementById('drawer');
+    const toggleDrawer = document.getElementById('toggleDrawer');
+    const namesInput = document.getElementById('namesInput');
+    const addNamesBtn = document.getElementById('addNamesBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const participantsList = document.getElementById('participantsList');
+    const countEl = document.getElementById('count');
+    const displayEl = document.getElementById('display');
+    const drawBtn = document.getElementById('drawBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const winnersList = document.getElementById('winnersList');
+
+    // Utils
+    function parseNames(text) {
+      return text
+        .split(/\n|,/)
+        .map(n => n.trim())
+        .filter(n => n.length > 0);
+    }
+
+    function renderParticipants() {
+      participantsList.innerHTML = participants.map((n, i) => `
+        <li class="flex items-center justify-between gap-2">
+          <span>${escapeHtml(n)}</span>
+          <button data-idx="${i}" class="remove px-2 py-1 text-xs rounded-lg border">Remove</button>
+        </li>
+      `).join('');
+      countEl.textContent = participants.length;
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    }
+
+    function shuffle(arr) { // Fisher–Yates
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function secureRandomIndex(max) { // cryptographically stronger
+      if (max <= 0) return 0;
+      const array = new Uint32Array(1);
+      window.crypto.getRandomValues(array);
+      return array[0] % max;
+    }
+
+    function startRolling() {
+      if (participants.length === 0 || rolling) return;
+      rolling = true;
+      displayEl.classList.remove('text-emerald-600');
+      const sequence = shuffle(participants);
+      let i = 0;
+      intervalId = setInterval(() => {
+        displayEl.textContent = sequence[i % sequence.length];
+        i++;
+      }, 70);
+      drawBtn.classList.add('hidden');
+      stopBtn.classList.remove('hidden');
+    }
+
+    function stopAndPick() {
+      if (!rolling) return;
+      clearInterval(intervalId);
+      intervalId = null;
+      rolling = false;
+      const idx = secureRandomIndex(participants.length);
+      const chosen = participants[idx];
+      displayEl.textContent = '🎉 ' + chosen + ' 🎉';
+      displayEl.classList.add('text-emerald-600');
+      // Remove winner from pool
+      participants.splice(idx, 1);
+      renderParticipants();
+      // Confetti burst
+      confetti({ particleCount: 140, spread: 70, origin: { y: 0.3 } });
+      confetti({ particleCount: 120, angle: 60, spread: 55, origin: { x: 0 } });
+      confetti({ particleCount: 120, angle: 120, spread: 55, origin: { x: 1 } });
+      // Add to winners list
+      const li = document.createElement('li');
+      li.className = 'bg-white/70 rounded-xl px-3 py-2';
+      li.textContent = chosen;
+      winnersList.prepend(li);
+      drawBtn.classList.remove('hidden');
+      stopBtn.classList.add('hidden');
+    }
+
+    // Events
+    toggleDrawer.addEventListener('click', () => drawer.classList.toggle('open'));
+
+    addNamesBtn.addEventListener('click', () => {
+      const added = parseNames(namesInput.value);
+      if (added.length) {
+        participants = participants.concat(added);
+        namesInput.value = '';
+        renderParticipants();
+      }
+    });
+
+    clearAllBtn.addEventListener('click', () => {
+      participants = [];
+      renderParticipants();
+    });
+
+    participantsList.addEventListener('click', (e) => {
+      const btn = e.target.closest('.remove');
+      if (!btn) return;
+      const idx = Number(btn.getAttribute('data-idx'));
+      participants.splice(idx, 1);
+      renderParticipants();
+    });
+
+    drawBtn.addEventListener('click', startRolling);
+    stopBtn.addEventListener('click', stopAndPick);
+
+    resetBtn.addEventListener('click', () => {
+      displayEl.textContent = 'Click Draw to start!';
+      displayEl.classList.remove('text-emerald-600');
+      if (intervalId) { clearInterval(intervalId); intervalId = null; }
+      rolling = false;
+      stopBtn.classList.add('hidden');
+      drawBtn.classList.remove('hidden');
+    });
+  </script>
+</body>
+</html>
